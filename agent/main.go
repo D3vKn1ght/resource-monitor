@@ -7,6 +7,7 @@ import (
     "os"
     "time"
 
+    "github.com/google/uuid"
     "github.com/shirou/gopsutil/cpu"
     "github.com/shirou/gopsutil/mem"
     "github.com/shirou/gopsutil/disk"
@@ -32,6 +33,33 @@ func ReadConfig(filename string) (map[string]interface{}, error) {
     }
 
     return config, nil
+}
+
+func SaveConfig(filename string, config map[string]interface{}) error {
+    data, err := json.MarshalIndent(config, "", "  ")
+    if err != nil {
+        return err
+    }
+
+    err = ioutil.WriteFile(filename, data, 0644)
+    if err != nil {
+        return err
+    }
+
+    return nil
+}
+
+func CheckAndCreateID(config map[string]interface{}, filename string) error {
+    id, exists := config["id"]
+    if !exists || id == nil || len(id.(string)) == 0 {
+        newID := uuid.New().String()
+        config["id"] = newID
+        fmt.Printf("Tạo ID mới: %s\n", newID)
+        return SaveConfig(filename, config)
+    }
+
+    fmt.Printf("ID hiện tại: %s\n", id)
+    return nil
 }
 
 func GetSystemInfo(my_config map[string]interface{}) (map[string]interface{}, error) {
@@ -103,9 +131,17 @@ func GetSystemInfo(my_config map[string]interface{}) (map[string]interface{}, er
 }
 
 func main() {
-    config, err := ReadConfig("config.json")
+    configFile := "config.json"
+    
+    config, err := ReadConfig(configFile)
     if err != nil {
         fmt.Printf("Lỗi khi đọc file config: %v\n", err)
+        return
+    }
+
+    err = CheckAndCreateID(config, configFile)
+    if err != nil {
+        fmt.Printf("Lỗi khi tạo ID: %v\n", err)
         return
     }
 

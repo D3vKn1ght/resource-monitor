@@ -1,5 +1,5 @@
 {
-    "cpu_info":true,
-    "memory_info":true,
-    "storage_info":true
+  "cpu_info": true,
+  "memory_info": true,
+  "storage_info": true
 }
