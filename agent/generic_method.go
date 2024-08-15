@@ -6,6 +6,8 @@ import (
     "io/ioutil"
     "os"
     "github.com/google/uuid"
+	"net/http"
+	"bytes"
 )
 
 func ReadConfig(filename string) (map[string]interface{}, error) {
@@ -54,5 +56,26 @@ func CheckAndCreateID(config map[string]interface{}, filename string) error {
     }
 
     fmt.Printf("ID hiện tại: %s\n", id)
+    return nil
+}
+
+func SendSystemInfo(domain string,systemInfo map[string]interface{}) error {
+    jsonData, err := json.Marshal(systemInfo)
+    if err != nil {
+        return err
+    }
+	var url string= domain+"/systeminfo/"
+
+    resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        return fmt.Errorf("Failed to send system info, status code: %d", resp.StatusCode)
+    }
+
+    fmt.Println("System info sent successfully")
     return nil
 }

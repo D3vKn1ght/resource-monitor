@@ -1,5 +1,7 @@
 {
   "cpu_info": true,
+  "domain": "http://127.0.0.1:7890",
+  "id": "master_node",
   "memory_info": true,
   "storage_info": true
 }
