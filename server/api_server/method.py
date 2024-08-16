@@ -1,5 +1,5 @@
 from fastapi import HTTPException
-from define import SystemInfo
+from define import *
 import requests
 from urllib.parse import quote
 
@@ -47,3 +47,26 @@ def send_telegram_message(token="", chat_id='@detecteven123', message=""):
     url = f'https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={message}'
     response = requests.get(url)
     return response
+
+def check_cpu_usage(cpu_info, threshold=90):
+    if cpu_info["usage_percent"] > threshold:
+        return True, cpu_info["usage_percent"]
+    return False, cpu_info["usage_percent"]
+
+def check_memory_usage(memory_info, threshold=90):
+    if memory_info["usage_percent"] > threshold:
+        return True, memory_info["usage_percent"]
+    return False, memory_info["usage_percent"]
+
+def check_storage_usage(storage_infos, threshold=90):
+    list_alert = []
+    for mountpoint, storage_info in storage_infos.items():
+        if storage_info["usage_percent"] > threshold:
+            list_alert.append((mountpoint, storage_info["usage_percent"]))
+    if list_alert:
+        return True, list_alert
+    return False, list_alert
+
+def send_alert(agent_id, message):
+    message=f"⚠️Cảnh báo, agent {agent_id} đang sử dụng tài nguyên quá mức\n {message}"
+    send_telegram_message(TOKEN , CHAT_ID, message)

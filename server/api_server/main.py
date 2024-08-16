@@ -23,18 +23,16 @@ engine = create_engine(SQLITE_DATABASE_URL,connect_args={"check_same_thread": Fa
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# SQLAlchemy model for the Agent table
 class Agent(Base):
     __tablename__ = "agents"
     id = Column(String, primary_key=True, index=True)
     os = Column(String, nullable=False)
     platform = Column(String, nullable=False)
     architecture = Column(String, nullable=False)
+    
 
-# Create the table if it doesn't exist
 Base.metadata.create_all(bind=engine)
 
-# Dependency to get the SQLAlchemy session
 def get_db():
     db = SessionLocal()
     try:
@@ -48,11 +46,12 @@ async def get_agents():
     agents = db.query(Agent).all()
     return agents
 
+
+
 @app.post("/systeminfo/")
 async def receive_system_info(info: SystemInfo):
     try:
         print(info)
-        message_string = create_message(info)
         db = SessionLocal()
         agent = db.query(Agent).filter(Agent.id == info.id).first()
         if not agent:
@@ -67,9 +66,38 @@ async def receive_system_info(info: SystemInfo):
             db.add(new_agent)
             db.commit()
             db.refresh(new_agent)
-            send_telegram_message(TOKEN, "1016719068", message_string)
+            message_string = create_message(info)
+            send_telegram_message(TOKEN, CHAT_ID, message_string)
         else:
             print(f"Agent with id {info.id} already exists.")
+            
+        is_alert = False  
+        message = ""          
+        cpu_info = info.cpu
+        is_alert_cpu, cpu_usage = check_cpu_usage(cpu_info)
+        if is_alert_cpu:
+            print(f"CPU usage is over threshold: {cpu_usage:.2f}%")
+            is_alert = True
+            message += f"+ CPU : {cpu_usage:.2f}%\n"
+        
+        memory_info = info.memory
+        is_alert_memory, memory_usage = check_memory_usage(memory_info)
+        if is_alert_memory:
+            print(f"Memory usage is over threshold: {memory_usage:.2f}%")
+            is_alert = True
+            message += f"+ RAM : {memory_usage:.2f}%\n"        
+        
+        storage_infos = info.storage
+        is_alert_storage, list_alert_storage = check_storage_usage(storage_infos)
+        if is_alert_storage:
+            print(f"Storage usage is over threshold")
+            is_alert = True
+            message += f"+ Bộ nhớ:\n"
+            for mountpoint, storage_usage in list_alert_storage:
+                message += f"\t\t\t{mountpoint} : {storage_usage:.2f}%\n"        
+        
+        if is_alert:
+            send_alert(info.id, message)
         
         return {"message": "System info received successfully"}
     except Exception as e:
