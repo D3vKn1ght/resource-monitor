@@ -4,7 +4,11 @@ from typing import Dict, Any
 
 TOKEN=""
 
-CHAT_ID="1016719068"
+CHAT_ID=""
+
+CPU_TYPE="CPU"
+RAM_TYPE="RAM"
+STORAGE_TYPE="Storage"
 
 class SystemInfo(BaseModel):
     cpu: Dict[str, Any] = {}
@@ -14,4 +18,5 @@ class SystemInfo(BaseModel):
     os: str
     platform: str
     architecture: str
+
 

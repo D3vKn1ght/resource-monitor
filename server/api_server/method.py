@@ -1,7 +1,9 @@
 from fastapi import HTTPException
-from define import *
 import requests
 from urllib.parse import quote
+from sqlalchemy.orm import Session
+from define import *
+from db import *
 
 def create_message(info: SystemInfo) -> str:
     try:
@@ -70,3 +72,75 @@ def check_storage_usage(storage_infos, threshold=90):
 def send_alert(agent_id, message):
     message=f"⚠️Cảnh báo, agent {agent_id} đang sử dụng tài nguyên quá mức\n {message}"
     send_telegram_message(TOKEN , CHAT_ID, message)
+    
+    
+def get_or_create_agent(info: SystemInfo, db: Session):
+    agent = db.query(Agent).filter(Agent.id == info.id).first()
+    if not agent:
+        print("new agent, monitoring it")
+        new_agent = Agent(
+            id=info.id,
+            os=info.os,
+            platform=info.platform,
+            architecture=info.architecture
+        )
+        db.add(new_agent)
+        db.commit()
+        db.refresh(new_agent)
+        message_string = create_message(info)
+        send_telegram_message(TOKEN, CHAT_ID, message_string)
+        return new_agent
+    else:
+        print(f"Agent with id {info.id} already exists.")
+        return agent
+
+def process_system_info(info: SystemInfo, db: Session):
+    is_alert = False  
+    message = ""          
+    is_alert_cpu, cpu_message = check_and_handle_cpu_alert(info, db)
+    is_alert_memory, memory_message = check_and_handle_memory_alert(info, db)
+    is_alert_storage, storage_message = check_and_handle_storage_alert(info, db)
+
+    if is_alert_cpu or is_alert_memory or is_alert_storage:
+        is_alert = True
+        message += cpu_message + memory_message + storage_message
+        
+    return message, is_alert
+
+def check_and_handle_cpu_alert(info: SystemInfo, db: Session):
+    cpu_info = info.cpu
+    is_alert_cpu, cpu_usage = check_cpu_usage(cpu_info)
+    message = ""
+    if is_alert_cpu:
+        print(f"CPU usage is over threshold: {cpu_usage:.2f}%")
+        message += f"+ CPU : {cpu_usage:.2f}%\n"
+        insert_alert(db, info.id, CPU_TYPE, f"CPU usage is over threshold: {cpu_usage:.2f}%")
+        if check_alert_need_send(db, info.id, CPU_TYPE):
+            return True, message
+    return False, message
+
+def check_and_handle_memory_alert(info: SystemInfo, db: Session):
+    memory_info = info.memory
+    is_alert_memory, memory_usage = check_memory_usage(memory_info)
+    message = ""
+    if is_alert_memory:
+        print(f"Memory usage is over threshold: {memory_usage:.2f}%")
+        message += f"+ RAM : {memory_usage:.2f}%\n"
+        insert_alert(db, info.id, RAM_TYPE, f"Memory usage is over threshold: {memory_usage:.2f}%")
+        if check_alert_need_send(db, info.id, RAM_TYPE):
+            return True, message
+    return False, message
+
+def check_and_handle_storage_alert(info: SystemInfo, db: Session):
+    storage_infos = info.storage
+    is_alert_storage, list_alert_storage = check_storage_usage(storage_infos)
+    message = ""
+    if is_alert_storage:
+        print(f"Storage usage is over threshold")
+        message += f"+ Bộ nhớ:\n"
+        for mountpoint, storage_usage in list_alert_storage:
+            message += f"\t\t\t{mountpoint} : {storage_usage:.2f}%\n"
+        insert_alert(db, info.id, STORAGE_TYPE, "Storage usage is over threshold")
+        if check_alert_need_send(db, info.id, STORAGE_TYPE):
+            return True, message
+    return False, message

@@ -1,11 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+import uvicorn
 from define import *
 from method import *
-import uvicorn
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from db import *
 
 app = FastAPI()
 origins = ["*"]
@@ -18,90 +17,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SQLITE_DATABASE_URL  = "sqlite:////app//monitoring.db"
-engine = create_engine(SQLITE_DATABASE_URL,connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-class Agent(Base):
-    __tablename__ = "agents"
-    id = Column(String, primary_key=True, index=True)
-    os = Column(String, nullable=False)
-    platform = Column(String, nullable=False)
-    architecture = Column(String, nullable=False)
-    
-
-Base.metadata.create_all(bind=engine)
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        
-@app.get("/getagents/")
-async def get_agents():
-    db = SessionLocal()
+@app.get("/get-agents/")
+async def get_agents(db: Session = Depends(get_db)):
     agents = db.query(Agent).all()
     return agents
 
-
-
-@app.post("/systeminfo/")
-async def receive_system_info(info: SystemInfo):
+@app.post("/send-system-info/")
+async def receive_system_info(info: SystemInfo, db: Session = Depends(get_db)):
     try:
         print(info)
-        db = SessionLocal()
-        agent = db.query(Agent).filter(Agent.id == info.id).first()
-        if not agent:
-            print("new agent, monitoring it")
-            
-            new_agent = Agent(
-                id=info.id,
-                os=info.os,
-                platform=info.platform,
-                architecture=info.architecture
-            )
-            db.add(new_agent)
-            db.commit()
-            db.refresh(new_agent)
-            message_string = create_message(info)
-            send_telegram_message(TOKEN, CHAT_ID, message_string)
-        else:
-            print(f"Agent with id {info.id} already exists.")
-            
-        is_alert = False  
-        message = ""          
-        cpu_info = info.cpu
-        is_alert_cpu, cpu_usage = check_cpu_usage(cpu_info)
-        if is_alert_cpu:
-            print(f"CPU usage is over threshold: {cpu_usage:.2f}%")
-            is_alert = True
-            message += f"+ CPU : {cpu_usage:.2f}%\n"
-        
-        memory_info = info.memory
-        is_alert_memory, memory_usage = check_memory_usage(memory_info)
-        if is_alert_memory:
-            print(f"Memory usage is over threshold: {memory_usage:.2f}%")
-            is_alert = True
-            message += f"+ RAM : {memory_usage:.2f}%\n"        
-        
-        storage_infos = info.storage
-        is_alert_storage, list_alert_storage = check_storage_usage(storage_infos)
-        if is_alert_storage:
-            print(f"Storage usage is over threshold")
-            is_alert = True
-            message += f"+ Bộ nhớ:\n"
-            for mountpoint, storage_usage in list_alert_storage:
-                message += f"\t\t\t{mountpoint} : {storage_usage:.2f}%\n"        
+        agent = get_or_create_agent(info, db)
+        message, is_alert = process_system_info(info, db)
         
         if is_alert:
             send_alert(info.id, message)
         
+        delete_alert_over_save(db)
+        
         return {"message": "System info received successfully"}
     except Exception as e:
+        print(f"An error occurred: {e}")
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
+    
+@app.post("/get-alerts/")
+async def get_alerts(agent_id: str, db: Session = Depends(get_db)):
+    alerts = db.query(AlertLog).filter(AlertLog.agent_id == agent_id).order_by(AlertLog.timestamp.desc()).all()
+    return alerts
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", port=80, host='0.0.0.0', reload=True)

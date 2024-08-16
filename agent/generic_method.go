@@ -64,7 +64,7 @@ func SendSystemInfo(domain string, systemInfo map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	var url string = domain + "/systeminfo/"
+	var url string = domain + "/send-system-info/"
 
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
